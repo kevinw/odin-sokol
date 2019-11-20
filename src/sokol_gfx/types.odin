@@ -533,6 +533,7 @@ Uniform_Type :: enum i32 {
     FLOAT3,
     FLOAT4,
     MAT4,
+    INT,
     _NUM,
 };
 

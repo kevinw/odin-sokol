@@ -2,8 +2,6 @@ package sokol_time
 
 when ODIN_OS == "windows" do foreign import stime_lib "sokol_time_d3d11.lib"
 
-import "core:c"
-
 @(default_calling_convention="c")
 @(link_prefix="stm_")
 foreign stime_lib {

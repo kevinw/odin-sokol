@@ -247,6 +247,12 @@ foreign sapp_lib {
     show_keyboard  :: proc(visible: bool) ---
     /* return true if the mobile device onscreen keyboard is currently shown */
     keyboard_shown :: proc() -> bool ---
+    /* show or hide the mouse cursor */
+    show_mouse :: proc(visible: bool) ---
+    /* returns true if the mouse cursor is shown */
+    mouse_shown :: proc() -> bool ---
+    /* put relative mouse movement into x and y */
+    get_relative_mouse :: proc(x, y: ^i32) ---
     /* return the userdata pointer optionally provided in desc */
     userdata       :: proc() -> rawptr ---
     /* return a copy of the desc structure */

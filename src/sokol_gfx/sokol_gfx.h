@@ -2091,6 +2091,81 @@ SOKOL_API_DECL void sg_discard_context(sg_context ctx_id);
 #ifdef SOKOL_IMPL
 #define SOKOL_GFX_IMPL_INCLUDED (1)
 
+const char* sg_pixel_format_names[] = {
+    "_SG_PIXELFORMAT_DEFAULT",    /* value 0 reserved for default-init */
+    "SG_PIXELFORMAT_NONE",
+
+    "SG_PIXELFORMAT_R8",
+    "SG_PIXELFORMAT_R8SN",
+    "SG_PIXELFORMAT_R8UI",
+    "SG_PIXELFORMAT_R8SI",
+
+    "SG_PIXELFORMAT_R16",
+    "SG_PIXELFORMAT_R16SN",
+    "SG_PIXELFORMAT_R16UI",
+    "SG_PIXELFORMAT_R16SI",
+    "SG_PIXELFORMAT_R16F",
+    "SG_PIXELFORMAT_RG8",
+    "SG_PIXELFORMAT_RG8SN",
+    "SG_PIXELFORMAT_RG8UI",
+    "SG_PIXELFORMAT_RG8SI",
+
+    "SG_PIXELFORMAT_R32UI",
+    "SG_PIXELFORMAT_R32SI",
+    "SG_PIXELFORMAT_R32F",
+    "SG_PIXELFORMAT_RG16",
+    "SG_PIXELFORMAT_RG16SN",
+    "SG_PIXELFORMAT_RG16UI",
+    "SG_PIXELFORMAT_RG16SI",
+    "SG_PIXELFORMAT_RG16F",
+    "SG_PIXELFORMAT_RGBA8",
+    "SG_PIXELFORMAT_RGBA8SN",
+    "SG_PIXELFORMAT_RGBA8UI",
+    "SG_PIXELFORMAT_RGBA8SI",
+    "SG_PIXELFORMAT_BGRA8",
+    "SG_PIXELFORMAT_RGB10A2",
+    "SG_PIXELFORMAT_RG11B10F",
+
+    "SG_PIXELFORMAT_RG32UI",
+    "SG_PIXELFORMAT_RG32SI",
+    "SG_PIXELFORMAT_RG32F",
+    "SG_PIXELFORMAT_RGBA16",
+    "SG_PIXELFORMAT_RGBA16SN",
+    "SG_PIXELFORMAT_RGBA16UI",
+    "SG_PIXELFORMAT_RGBA16SI",
+    "SG_PIXELFORMAT_RGBA16F",
+
+    "SG_PIXELFORMAT_RGBA32UI",
+    "SG_PIXELFORMAT_RGBA32SI",
+    "SG_PIXELFORMAT_RGBA32F",
+
+    "SG_PIXELFORMAT_DEPTH",
+    "SG_PIXELFORMAT_DEPTH_STENCIL",
+
+    "SG_PIXELFORMAT_BC1_RGBA",
+    "SG_PIXELFORMAT_BC2_RGBA",
+    "SG_PIXELFORMAT_BC3_RGBA",
+    "SG_PIXELFORMAT_BC4_R",
+    "SG_PIXELFORMAT_BC4_RSN",
+    "SG_PIXELFORMAT_BC5_RG",
+    "SG_PIXELFORMAT_BC5_RGSN",
+    "SG_PIXELFORMAT_BC6H_RGBF",
+    "SG_PIXELFORMAT_BC6H_RGBUF",
+    "SG_PIXELFORMAT_BC7_RGBA",
+    "SG_PIXELFORMAT_PVRTC_RGB_2BPP",
+    "SG_PIXELFORMAT_PVRTC_RGB_4BPP",
+    "SG_PIXELFORMAT_PVRTC_RGBA_2BPP",
+    "SG_PIXELFORMAT_PVRTC_RGBA_4BPP",
+    "SG_PIXELFORMAT_ETC2_RGB8",
+    "SG_PIXELFORMAT_ETC2_RGB8A1",
+    "SG_PIXELFORMAT_ETC2_RGBA8",
+    "SG_PIXELFORMAT_ETC2_RG11",
+    "SG_PIXELFORMAT_ETC2_RG11SN",
+
+    "SG_PIXELFORMAT_NUM",
+};
+
+
 #if !(defined(SOKOL_GLCORE33)||defined(SOKOL_GLES2)||defined(SOKOL_GLES3)||defined(SOKOL_D3D11)||defined(SOKOL_METAL)||defined(SOKOL_DUMMY_BACKEND))
 #error "Please select a backend with SOKOL_GLCORE33, SOKOL_GLES2, SOKOL_GLES3, SOKOL_D3D11, SOKOL_METAL or SOKOL_DUMMY_BACKEND"
 #endif
@@ -6845,7 +6920,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_image(_sg_image_t* img, const sg_ima
         d3d11_desc.Width = img->width;
         d3d11_desc.Height = img->height;
         d3d11_desc.MipLevels = 1;
-        d3d11_desc.ArraySize = 1;
+        d3d11_desc.ArraySize = img->type == SG_IMAGETYPE_ARRAY ? img->depth : 1;
         d3d11_desc.Format = img->d3d11_format;
         d3d11_desc.Usage = D3D11_USAGE_DEFAULT;
         d3d11_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
@@ -7391,11 +7466,17 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_pass(_sg_pass_t* pass, _sg_image_t**
             if ((att->image->type == SG_IMAGETYPE_2D) || is_msaa) {
                 if (is_msaa) {
                     d3d11_res = (ID3D11Resource*) att->image->d3d11_texmsaa;
-                    d3d11_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+                    d3d11_rtv_desc.ViewDimension = att->image->type == SG_IMAGETYPE_ARRAY ? D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY : D3D11_RTV_DIMENSION_TEXTURE2DMS;
                 }
                 else {
                     d3d11_res = (ID3D11Resource*) att->image->d3d11_tex2d;
-                    d3d11_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+                    if (att->image->type == SG_IMAGETYPE_ARRAY) {
+                        d3d11_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+                        d3d11_rtv_desc.Texture2DArray.FirstArraySlice = att->slice;
+                        d3d11_rtv_desc.Texture2DArray.ArraySize = att->image->depth;
+                    } else {
+                        d3d11_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+                    }
                     d3d11_rtv_desc.Texture2D.MipSlice = att->mip_level;
                 }
             }
@@ -7404,7 +7485,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_pass(_sg_pass_t* pass, _sg_image_t**
                 d3d11_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
                 d3d11_rtv_desc.Texture2DArray.MipSlice = att->mip_level;
                 d3d11_rtv_desc.Texture2DArray.FirstArraySlice = att->slice;
-                d3d11_rtv_desc.Texture2DArray.ArraySize = 1;
+                d3d11_rtv_desc.Texture2DArray.ArraySize = att->image->depth;
             }
             else {
                 SOKOL_ASSERT(att->image->type == SG_IMAGETYPE_3D);
@@ -7441,11 +7522,11 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_pass(_sg_pass_t* pass, _sg_image_t**
         memset(&d3d11_dsv_desc, 0, sizeof(d3d11_dsv_desc));
         d3d11_dsv_desc.Format = att->image->d3d11_format;
         const bool is_msaa = att->image->sample_count > 1;
-        if (is_msaa) {
-            d3d11_dsv_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
-        }
-        else {
-            d3d11_dsv_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+        if (att->image->type == SG_IMAGETYPE_ARRAY) {
+            d3d11_dsv_desc.ViewDimension = is_msaa ? D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY : D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+            d3d11_dsv_desc.Texture2DArray.ArraySize = att->image->depth;
+        } else {
+            d3d11_dsv_desc.ViewDimension = is_msaa ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
         }
         ID3D11Resource* d3d11_res = (ID3D11Resource*) att->image->d3d11_texds;
         SOKOL_ASSERT(d3d11_res);
@@ -10343,9 +10424,16 @@ _SOKOL_PRIVATE bool _sg_validate_apply_pipeline(sg_pipeline pip_id) {
             SOKOL_VALIDATE(pip->color_format == pass->color_atts[0].image->pixel_format, _SG_VALIDATE_APIP_COLOR_FORMAT);
             SOKOL_VALIDATE(pip->sample_count == pass->color_atts[0].image->sample_count, _SG_VALIDATE_APIP_SAMPLE_COUNT);
             if (pass->ds_att.image) {
+                if (pip->depth_format != pass->ds_att.image->pixel_format) {
+                    fprintf(stderr, "pip->depth_format is %s, but pass pixel format is %s\n",
+                        sg_pixel_format_names[pip->depth_format], sg_pixel_format_names[pass->ds_att.image->pixel_format]);
+                }
                 SOKOL_VALIDATE(pip->depth_format == pass->ds_att.image->pixel_format, _SG_VALIDATE_APIP_DEPTH_FORMAT);
             }
             else {
+                if (pip->depth_format != SG_PIXELFORMAT_NONE) {
+                    fprintf(stderr, "pip->depth_format is %d, but expected SG_PIXELFORMAT_NONE (%d)\n", pip->depth_format, SG_PIXELFORMAT_NONE);
+                }
                 SOKOL_VALIDATE(pip->depth_format == SG_PIXELFORMAT_NONE, _SG_VALIDATE_APIP_DEPTH_FORMAT);
             }
         }
@@ -10353,6 +10441,9 @@ _SOKOL_PRIVATE bool _sg_validate_apply_pipeline(sg_pipeline pip_id) {
             /* default pass */
             SOKOL_VALIDATE(pip->color_attachment_count == 1, _SG_VALIDATE_APIP_ATT_COUNT);
             SOKOL_VALIDATE(pip->color_format == _sg_default_rendertarget_colorformat(), _SG_VALIDATE_APIP_COLOR_FORMAT);
+            if (pip->depth_format != _sg_default_rendertarget_depthformat()) {
+                fprintf(stderr, "pip->depth_format is %d, but expected _default_rendertarget_depthformat() %d\n", pip->depth_format, _sg_default_rendertarget_depthformat());
+            }
             SOKOL_VALIDATE(pip->depth_format == _sg_default_rendertarget_depthformat(), _SG_VALIDATE_APIP_DEPTH_FORMAT);
             /* FIXME: hmm, we don't know if the default framebuffer is multisampled here */
         }
