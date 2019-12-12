@@ -6921,13 +6921,43 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_image(_sg_image_t* img, const sg_ima
         d3d11_desc.Height = img->height;
         d3d11_desc.MipLevels = 1;
         d3d11_desc.ArraySize = img->type == SG_IMAGETYPE_ARRAY ? img->depth : 1;
+#define SAMPLE_DEPTH_BUFFER
+#ifdef SAMPLE_DEPTH_BUFFER
+        d3d11_desc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+        d3d11_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+#else
         d3d11_desc.Format = img->d3d11_format;
-        d3d11_desc.Usage = D3D11_USAGE_DEFAULT;
         d3d11_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+#endif
         d3d11_desc.SampleDesc.Count = img->sample_count;
         d3d11_desc.SampleDesc.Quality = msaa ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
         hr = ID3D11Device_CreateTexture2D(_sg.d3d11.dev, &d3d11_desc, NULL, &img->d3d11_texds);
         SOKOL_ASSERT(SUCCEEDED(hr) && img->d3d11_texds);
+
+#ifdef SAMPLE_DEPTH_BUFFER
+        D3D11_SHADER_RESOURCE_VIEW_DESC d3d11_srv_desc;
+        memset(&d3d11_srv_desc, 0, sizeof(d3d11_srv_desc));
+        d3d11_srv_desc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS; // d3d11_tex_desc.Format
+        switch (img->type) {
+            case SG_IMAGETYPE_2D:
+                d3d11_srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                d3d11_srv_desc.Texture2D.MipLevels = img->num_mipmaps;
+                break;
+            case SG_IMAGETYPE_CUBE:
+                d3d11_srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+                d3d11_srv_desc.TextureCube.MipLevels = img->num_mipmaps;
+                break;
+            case SG_IMAGETYPE_ARRAY:
+                d3d11_srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+                d3d11_srv_desc.Texture2DArray.MipLevels = img->num_mipmaps;
+                d3d11_srv_desc.Texture2DArray.ArraySize = img->depth;
+                break;
+            default:
+                SOKOL_UNREACHABLE; break;
+        }
+        hr = ID3D11Device_CreateShaderResourceView(_sg.d3d11.dev, (ID3D11Resource*)img->d3d11_texds, &d3d11_srv_desc, &img->d3d11_srv);
+        SOKOL_ASSERT(SUCCEEDED(hr) && img->d3d11_srv);
+#endif
     }
     else {
         /* create (or inject) color texture */
@@ -7073,35 +7103,36 @@ _SOKOL_PRIVATE sg_resource_state _sg_create_image(_sg_image_t* img, const sg_ima
             hr = ID3D11Device_CreateTexture2D(_sg.d3d11.dev, &d3d11_tex_desc, NULL, &img->d3d11_texmsaa);
             SOKOL_ASSERT(SUCCEEDED(hr) && img->d3d11_texmsaa);
         }
-
-        /* sampler state object, note D3D11 implements an internal shared-pool for sampler objects */
-        D3D11_SAMPLER_DESC d3d11_smp_desc;
-        memset(&d3d11_smp_desc, 0, sizeof(d3d11_smp_desc));
-        d3d11_smp_desc.Filter = _sg_d3d11_filter(img->min_filter, img->mag_filter, img->max_anisotropy);
-        d3d11_smp_desc.AddressU = _sg_d3d11_address_mode(img->wrap_u);
-        d3d11_smp_desc.AddressV = _sg_d3d11_address_mode(img->wrap_v);
-        d3d11_smp_desc.AddressW = _sg_d3d11_address_mode(img->wrap_w);
-        switch (img->border_color) {
-            case SG_BORDERCOLOR_TRANSPARENT_BLACK:
-                /* all 0.0f */
-                break;
-            case SG_BORDERCOLOR_OPAQUE_WHITE:
-                for (int i = 0; i < 4; i++) {
-                    d3d11_smp_desc.BorderColor[i] = 1.0f;
-                }
-                break;
-            default:
-                /* opaque black */
-                d3d11_smp_desc.BorderColor[3] = 1.0f;
-                break;
-        }
-        d3d11_smp_desc.MaxAnisotropy = img->max_anisotropy;
-        d3d11_smp_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-        d3d11_smp_desc.MinLOD = desc->min_lod;
-        d3d11_smp_desc.MaxLOD = desc->max_lod;
-        hr = ID3D11Device_CreateSamplerState(_sg.d3d11.dev, &d3d11_smp_desc, &img->d3d11_smp);
-        SOKOL_ASSERT(SUCCEEDED(hr) && img->d3d11_smp);
     }
+
+    /* sampler state object, note D3D11 implements an internal shared-pool for sampler objects */
+    D3D11_SAMPLER_DESC d3d11_smp_desc;
+    memset(&d3d11_smp_desc, 0, sizeof(d3d11_smp_desc));
+    d3d11_smp_desc.Filter = _sg_d3d11_filter(img->min_filter, img->mag_filter, img->max_anisotropy);
+    d3d11_smp_desc.AddressU = _sg_d3d11_address_mode(img->wrap_u);
+    d3d11_smp_desc.AddressV = _sg_d3d11_address_mode(img->wrap_v);
+    d3d11_smp_desc.AddressW = _sg_d3d11_address_mode(img->wrap_w);
+    switch (img->border_color) {
+        case SG_BORDERCOLOR_TRANSPARENT_BLACK:
+            /* all 0.0f */
+            break;
+        case SG_BORDERCOLOR_OPAQUE_WHITE:
+            for (int i = 0; i < 4; i++) {
+                d3d11_smp_desc.BorderColor[i] = 1.0f;
+            }
+            break;
+        default:
+            /* opaque black */
+            d3d11_smp_desc.BorderColor[3] = 1.0f;
+            break;
+    }
+    d3d11_smp_desc.MaxAnisotropy = img->max_anisotropy;
+    d3d11_smp_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    d3d11_smp_desc.MinLOD = desc->min_lod;
+    d3d11_smp_desc.MaxLOD = desc->max_lod;
+    hr = ID3D11Device_CreateSamplerState(_sg.d3d11.dev, &d3d11_smp_desc, &img->d3d11_smp);
+    SOKOL_ASSERT(SUCCEEDED(hr) && img->d3d11_smp);
+
     return SG_RESOURCESTATE_VALID;
 }
 
@@ -7161,6 +7192,13 @@ _SOKOL_PRIVATE ID3DBlob* _sg_d3d11_compile_shader(const sg_shader_stage_desc* st
     }
     ID3DBlob* output = NULL;
     ID3DBlob* errors = NULL;
+
+    int flags1 = D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_OPTIMIZATION_LEVEL3;
+#if defined(SOKOL_DEBUG)
+    flags1 |= D3DCOMPILE_DEBUG;
+#endif
+    // TODO: pass D3DCOMPILE_SKIP_VALIDATION for shaders which have compiled in the past...
+
     _sg_d3d11_D3DCompile(
         stage_desc->source,             /* pSrcData */
         strlen(stage_desc->source),     /* SrcDataSize */
@@ -7169,7 +7207,7 @@ _SOKOL_PRIVATE ID3DBlob* _sg_d3d11_compile_shader(const sg_shader_stage_desc* st
         NULL,                           /* pInclude */
         stage_desc->entry ? stage_desc->entry : "main",     /* pEntryPoint */
         target,     /* pTarget (vs_5_0 or ps_5_0) */
-        D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_OPTIMIZATION_LEVEL3,   /* Flags1 */
+        flags1,     /* Flags1 */
         0,          /* Flags2 */
         &output,    /* ppCode */
         &errors);   /* ppErrorMsgs */
@@ -10433,6 +10471,7 @@ _SOKOL_PRIVATE bool _sg_validate_apply_pipeline(sg_pipeline pip_id) {
             else {
                 if (pip->depth_format != SG_PIXELFORMAT_NONE) {
                     fprintf(stderr, "pip->depth_format is %d, but expected SG_PIXELFORMAT_NONE (%d)\n", pip->depth_format, SG_PIXELFORMAT_NONE);
+                    fprintf(stderr, "possibly you need to set blend.depth_format to .NONE in make_pipeline\n");
                 }
                 SOKOL_VALIDATE(pip->depth_format == SG_PIXELFORMAT_NONE, _SG_VALIDATE_APIP_DEPTH_FORMAT);
             }
@@ -10526,6 +10565,10 @@ _SOKOL_PRIVATE bool _sg_validate_apply_bindings(const sg_bindings* bindings) {
             _sg_shader_stage_t* stage = &pip->shader->stage[SG_SHADERSTAGE_FS];
             if (bindings->fs_images[i].id != SG_INVALID_ID) {
                 SOKOL_VALIDATE(i < stage->num_images, _SG_VALIDATE_ABND_FS_IMGS);
+                if (!(i < stage->num_images)) {
+                    fprintf(stderr, "too many: shader stage has only %d image slots but your bindings have at least %d\n", 
+                        stage->num_images, i + 1);
+                }
                 const _sg_image_t* img = _sg_lookup_image(&_sg.pools, bindings->fs_images[i].id);
                 SOKOL_VALIDATE(img != 0, _SG_VALIDATE_ABND_FS_IMG_EXISTS);
                 if (img && img->slot.state == SG_RESOURCESTATE_VALID) {
@@ -10534,6 +10577,10 @@ _SOKOL_PRIVATE bool _sg_validate_apply_bindings(const sg_bindings* bindings) {
             }
             else {
                 SOKOL_VALIDATE(i >= stage->num_images, _SG_VALIDATE_ABND_FS_IMGS);
+                if (!(i >= stage->num_images)) {
+                    fprintf(stderr, "shader stage has %d image slots but your bindings have %d\n", 
+                        stage->num_images, i);
+                }
             }
         }
         return SOKOL_VALIDATE_END();
@@ -10562,6 +10609,9 @@ _SOKOL_PRIVATE bool _sg_validate_apply_uniforms(sg_shader_stage stage_index, int
 
         /* check that the provided data size doesn't exceed the uniform block size */
         SOKOL_VALIDATE(num_bytes <= stage->uniform_blocks[ub_index].size, _SG_VALIDATE_AUB_SIZE);
+        if (num_bytes > stage->uniform_blocks[ub_index].size) {
+            fprintf(stderr, "num_bytes: %d, ub index: %d, ub size: %d", num_bytes, ub_index, stage->uniform_blocks[ub_index].size);
+        }
 
         return SOKOL_VALIDATE_END();
     #endif

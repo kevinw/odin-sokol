@@ -178,9 +178,12 @@ init_pass :: proc(pass_id: Pass, desc: Pass_Desc) {
 }
 
 
+Assert_Failed_Func :: #type proc "c" (expr, file: cstring, line: i32);
 
 @(default_calling_convention="c")
 foreign sgfx_lib {
+    set_assert_func        :: proc(assert_failed: Assert_Failed_Func) ---
+
 	/* setup and misc functions */
 	sg_setup               :: proc(desc: ^Desc) ---
 	sg_install_trace_hooks :: proc(hooks: ^Trace_Hooks) -> Trace_Hooks ---
