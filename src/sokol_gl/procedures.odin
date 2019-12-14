@@ -1,6 +1,6 @@
 package sokol_gl
 
-import sg "sokol:sokol_gfx"
+import sg "../sokol_gfx"
 import "core:c"
 
 when ODIN_OS == "windows" do foreign import sgl_lib "sokol_gl_d3d11.lib"

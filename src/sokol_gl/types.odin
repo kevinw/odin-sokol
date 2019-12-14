@@ -1,6 +1,6 @@
 package sokol_gl
 
-import sg "sokol:sokol_gfx"
+import sg "../sokol_gfx"
 import "core:c"
 
 Desc :: struct {
